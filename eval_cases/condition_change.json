@@ -1,0 +1,13 @@
+{
+  "name": "condition_change",
+  "path": "src/checkout.py",
+  "old_content": "def can_checkout(user):\n    if user.is_active:\n        return True\n    return False\n",
+  "new_content": "def can_checkout(user):\n    if user.is_active and user.email_verified:\n        return True\n    return False\n",
+  "expected": {
+    "classification": "logic_change",
+    "changed_functions": ["can_checkout"],
+    "generate_tests": true,
+    "risk_band": "medium"
+  }
+}
+

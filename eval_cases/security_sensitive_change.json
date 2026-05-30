@@ -1,0 +1,13 @@
+{
+  "name": "security_sensitive_change",
+  "path": "src/auth/tokens.py",
+  "old_content": "def validate_token(token):\n    if token and token.startswith(\"prod_\"):\n        return True\n    return False\n",
+  "new_content": "def validate_token(token):\n    if token:\n        return True\n    return False\n",
+  "expected": {
+    "classification": "security_change",
+    "changed_functions": ["validate_token"],
+    "generate_tests": true,
+    "risk_band": "high"
+  }
+}
+

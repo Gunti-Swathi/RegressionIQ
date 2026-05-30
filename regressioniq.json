@@ -1,0 +1,30 @@
+{
+  "language": "python",
+  "test_framework": "pytest",
+  "risk": {
+    "high_risk_paths": [
+      "auth",
+      "authentication",
+      "permission",
+      "access",
+      "payment",
+      "billing",
+      "security",
+      "api",
+      "db",
+      "database"
+    ],
+    "security_keywords": [
+      "token",
+      "password",
+      "secret",
+      "permission",
+      "role",
+      "auth",
+      "jwt",
+      "csrf",
+      "access"
+    ]
+  }
+}
+

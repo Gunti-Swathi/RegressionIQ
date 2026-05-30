@@ -1,0 +1,13 @@
+{
+  "name": "return_value_change",
+  "path": "src/pricing.py",
+  "old_content": "def discount(price):\n    return price * 0.10\n",
+  "new_content": "def discount(price):\n    return price * 0.15\n",
+  "expected": {
+    "classification": "logic_change",
+    "changed_functions": ["discount"],
+    "generate_tests": true,
+    "risk_band": "medium"
+  }
+}
+

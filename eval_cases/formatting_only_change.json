@@ -1,0 +1,13 @@
+{
+  "name": "formatting_only_change",
+  "path": "src/pricing.py",
+  "old_content": "def calculate_total(price):\n    return price + 1\n",
+  "new_content": "def calculate_total(price):\n\n\n    return price + 1\n",
+  "expected": {
+    "classification": "formatting_change",
+    "changed_functions": [],
+    "generate_tests": false,
+    "risk_band": "low"
+  }
+}
+

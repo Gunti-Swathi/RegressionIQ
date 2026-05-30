@@ -1,0 +1,13 @@
+{
+  "name": "local_variable_rename",
+  "path": "src/pricing.py",
+  "old_content": "def calculate_total(price):\n    tax = price * 0.1\n    return price + tax\n",
+  "new_content": "def calculate_total(price):\n    fee = price * 0.1\n    return price + fee\n",
+  "expected": {
+    "classification": "refactor",
+    "changed_functions": ["calculate_total"],
+    "generate_tests": false,
+    "risk_band": "low"
+  }
+}
+

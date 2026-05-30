@@ -1,0 +1,13 @@
+{
+  "name": "api_signature_change",
+  "path": "src/api/users.py",
+  "old_content": "def get_user(user_id):\n    return {\"id\": user_id}\n",
+  "new_content": "def get_user(user_id, include_roles=False):\n    return {\"id\": user_id, \"roles\": [] if include_roles else None}\n",
+  "expected": {
+    "classification": "api_change",
+    "changed_functions": ["get_user"],
+    "generate_tests": true,
+    "risk_band": "high"
+  }
+}
+
