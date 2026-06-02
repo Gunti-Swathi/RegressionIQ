@@ -40,3 +40,38 @@ def report_to_text(report: AnalysisReport) -> str:
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
+
+
+def impact_report_to_json(report) -> str:
+    return json.dumps(report.model_dump(mode="json"), indent=2)
+
+
+def impact_report_to_text(report) -> str:
+    lines = [
+        "RegressionIQ Phase 2 Impact Analysis",
+        "",
+        f"Old commit: {report.old_commit}",
+        f"New commit: {report.new_commit}",
+        f"Changed files analyzed: {report.summary.get('files_analyzed', 0)}",
+        f"Impacted functions found: {report.summary.get('impacted_functions', 0)}",
+        f"Related tests found: {report.summary.get('related_tests', 0)}",
+        f"Context snippets retrieved: {report.summary.get('context_snippets', 0)}",
+        "",
+    ]
+    for file in report.files:
+        lines.append(file.changed_file)
+        if file.directly_changed_symbols:
+            lines.append(f"  changed_symbols: {', '.join(file.directly_changed_symbols)}")
+        if file.impacted_functions:
+            lines.append(f"  impacted_functions: {', '.join(file.impacted_functions)}")
+        if file.impacted_modules:
+            lines.append(f"  impacted_modules: {', '.join(file.impacted_modules)}")
+        if file.related_tests:
+            lines.append(f"  related_tests: {', '.join(file.related_tests)}")
+        if file.context:
+            lines.append("  context:")
+            for snippet in file.context[:6]:
+                symbol = f"::{snippet.symbol}" if snippet.symbol else ""
+                lines.append(f"    - {snippet.kind}: {snippet.path}{symbol}")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"

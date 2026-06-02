@@ -18,4 +18,5 @@ analysis-report.json
 *.log
 .env
 .env.*
-
+examples/sample_project/.git/
+examples/sample_project/.phase2-demo-commits

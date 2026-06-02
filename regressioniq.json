@@ -24,7 +24,17 @@
       "jwt",
       "csrf",
       "access"
+    ],
+    "ignored_path_fragments": [
+      ".venv/",
+      "venv/",
+      "__pycache__/",
+      ".git/",
+      "node_modules/",
+      "dist/",
+      "build/",
+      ".pytest_cache/",
+      "examples/"
     ]
   }
 }
-
