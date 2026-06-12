@@ -39,6 +39,7 @@ class RiskConfig(BaseModel):
             ".venv/",
             "venv/",
             "__pycache__/",
+            ".regressioniq/",
             ".git/",
             "node_modules/",
             "dist/",
@@ -80,4 +81,3 @@ def load_config(path: str | None = None) -> AppConfig:
 
     data = json.loads(config_path.read_text(encoding="utf-8"))
     return AppConfig.model_validate(data)
-

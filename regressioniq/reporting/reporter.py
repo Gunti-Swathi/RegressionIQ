@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from regressioniq.generation.models import GenerationReport, GeneratedTest
 from regressioniq.models import AnalysisReport
 
 
@@ -75,3 +76,51 @@ def impact_report_to_text(report) -> str:
                 lines.append(f"    - {snippet.kind}: {snippet.path}{symbol}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def generation_report_to_json(report: GenerationReport) -> str:
+    return json.dumps(report.model_dump(mode="json"), indent=2)
+
+
+def generation_report_to_text(report: GenerationReport) -> str:
+    lines = [
+        "RegressionIQ Phase 3 Test Generation",
+        "",
+        f"Old commit: {report.old_commit}",
+        f"New commit: {report.new_commit}",
+        f"Model: {report.model}",
+        f"Review dir: {report.review_dir}",
+        f"Generated tests: {report.summary.get('tests_generated', 0)}",
+        "",
+    ]
+    for item in report.generated:
+        lines.extend(_generated_test_lines(item))
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def review_items_to_text(items: list[GeneratedTest]) -> str:
+    lines = ["RegressionIQ Phase 3 Review Queue", ""]
+    if not items:
+        lines.append("No generated tests are waiting for review.")
+        return "\n".join(lines).rstrip() + "\n"
+    for item in items:
+        lines.extend(_generated_test_lines(item))
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _generated_test_lines(item: GeneratedTest) -> list[str]:
+    lines = [
+        item.id,
+        f"  state: {item.state.value}",
+        f"  changed_file: {item.changed_file}",
+        f"  review_file: {item.review_file}",
+        f"  target_path: {item.target_path}",
+        f"  model: {item.model}",
+    ]
+    if item.impacted_functions:
+        lines.append(f"  impacted_functions: {', '.join(item.impacted_functions)}")
+    if item.related_tests:
+        lines.append(f"  related_tests: {', '.join(item.related_tests)}")
+    return lines

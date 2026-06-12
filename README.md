@@ -2,7 +2,7 @@
 
 RegressionIQ is a regression test planning tool that analyzes code changes before test generation happens. The goal is to avoid generating tests for every Git diff and instead focus on changes that can actually affect behavior.
 
-Right now, the project supports Python repositories that use pytest. It compares two commits, understands the semantic change, classifies the risk, traces affected code, and retrieves related test context. It does not generate tests yet, call an LLM, modify source code, or commit files automatically.
+Right now, the project supports Python repositories that use pytest. It compares two commits, understands the semantic change, classifies the risk, traces affected code, retrieves related test context, and can draft pytest regression tests through Gemini for human review. It does not approve, execute, repair, or commit generated tests automatically.
 
 ## Problem Statement
 
@@ -63,6 +63,8 @@ Old/New Git commits
     -> test-generation decision
     -> impact analysis
     -> related test/context retrieval
+    -> Gemini pytest draft generation
+    -> human review and approval
 ```
 
 The important design choice is that the tool does not rely only on raw Git diff text. It loads the old and new versions of each changed Python file, parses them, and compares their code structure.
@@ -232,6 +234,74 @@ src/payments.py
 
 This is useful because future test generation should not only look at the edited file. It should also look at the code that depends on it and the tests that already cover that area.
 
+## Phase 3: Gemini Test Generation And Human Review
+
+Phase 3 turns the Phase 2 context into pytest regression test drafts.
+
+The tool sends changed functions, impacted callers, related tests, and fixtures to Gemini, then saves the generated pytest code into a review area instead of directly adding it to the main test suite.
+
+### What Phase 3 Adds
+
+1. **Gemini-backed generation**
+
+   Live generation uses `GEMINI_API_KEY` or `GOOGLE_API_KEY` and the optional Google Gen AI SDK.
+
+2. **pytest-only output**
+
+   Prompts instruct Gemini to return focused pytest code that follows the repository context.
+
+3. **Review queue**
+
+   Generated tests are stored under:
+
+   ```text
+   .regressioniq/reviews/
+   ```
+
+4. **Human approval states**
+
+   Review items can be:
+
+   - `generated`
+   - `approved`
+   - `rejected`
+   - `repair_needed`
+
+5. **Approval command**
+
+   Approved drafts are copied into:
+
+   ```text
+   tests/generated/
+   ```
+
+### Phase 3 Example
+
+```bash
+python3 -m regressioniq.main generate-tests \
+  --old OLD_COMMIT \
+  --new NEW_COMMIT \
+  --repo /path/to/repo \
+  --model gemini-2.5-flash
+```
+
+For local demos without using Gemini credits:
+
+```bash
+python3 -m regressioniq.main generate-tests \
+  --old OLD_COMMIT \
+  --new NEW_COMMIT \
+  --repo /path/to/repo \
+  --dry-run
+```
+
+Review and approve:
+
+```bash
+python3 -m regressioniq.main review-tests --repo /path/to/repo
+python3 -m regressioniq.main approve GENERATED_TEST_ID --repo /path/to/repo
+```
+
 ## Example Terminal Output
 
 ![RegressionIQ terminal output](docs/assets/output.jpeg)
@@ -249,11 +319,26 @@ RegressionIQ currently supports:
 - CLI and JSON output
 - graph-based impact analysis
 - related test/context retrieval
+- Gemini-backed pytest draft generation
+- human approval workflow
 
 ## Installation
 
 ```bash
 python3 -m pip install -e ".[dev]"
+```
+
+For live Gemini generation:
+
+```bash
+python3 -m pip install -e ".[dev,llm]"
+export GEMINI_API_KEY="your-api-key"
+```
+
+You can also put the key in a `.env` file in the RegressionIQ project root or the repository being analyzed:
+
+```text
+GEMINI_API_KEY=your-api-key
 ```
 
 You can also run the tool directly with:
@@ -280,6 +365,27 @@ python3 -m regressioniq.main impact \
   --old OLD_COMMIT \
   --new NEW_COMMIT \
   --repo /path/to/repo
+```
+
+Generate pytest regression drafts:
+
+```bash
+python3 -m regressioniq.main generate-tests \
+  --old OLD_COMMIT \
+  --new NEW_COMMIT \
+  --repo /path/to/repo
+```
+
+Review generated drafts:
+
+```bash
+python3 -m regressioniq.main review-tests --repo /path/to/repo
+```
+
+Approve a generated draft:
+
+```bash
+python3 -m regressioniq.main approve GENERATED_TEST_ID --repo /path/to/repo
 ```
 
 Run evaluation:
@@ -325,14 +431,15 @@ regressioniq/
 ├── decision/         # Test-generation decision logic
 ├── impact/           # Impact graph and dependency tracing
 ├── retrieval/        # Context retrieval
+├── generation/       # Gemini pytest generation and review storage
 ├── reporting/        # Text and JSON reports
 └── evaluation/       # Evaluation runner
 ```
 
 ## Conclusion
 
-So far, RegressionIQ can identify whether a code change is meaningful, classify the type of change, estimate risk, find affected downstream functions, and retrieve related tests and fixtures. This creates the foundation for a test generation system that is more selective and easier to review.
+So far, RegressionIQ can identify whether a code change is meaningful, classify the type of change, estimate risk, find affected downstream functions, retrieve related tests and fixtures, and generate pytest drafts for developer review. This creates a selective test generation workflow that is easier to inspect before adoption.
 
 ## Next Steps
 
-The next step is to use the retrieved context to draft regression test suggestions for developer review. After that, the plan is to add test execution, feedback-based repair, coverage awareness, and GitHub Actions support.
+The next step is to add test execution, feedback-based repair, coverage awareness, and GitHub Actions support.

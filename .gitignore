@@ -12,6 +12,7 @@ dist/
 build/
 *.egg-info/
 analysis-report.json
+.regressioniq/
 .DS_Store
 .idea/
 .vscode/

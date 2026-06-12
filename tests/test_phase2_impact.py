@@ -23,7 +23,13 @@ def commit_all(repo: Path, message: str) -> str:
 def copy_sample_project(target: Path) -> None:
     for source in SAMPLE.rglob("*"):
         rel = source.relative_to(SAMPLE)
-        if ".git" in rel.parts or "__pycache__" in rel.parts or rel.name == ".phase2-demo-commits" or rel.suffix == ".pyc":
+        if (
+            ".git" in rel.parts
+            or ".regressioniq" in rel.parts
+            or "__pycache__" in rel.parts
+            or rel.name == ".phase2-demo-commits"
+            or rel.suffix == ".pyc"
+        ):
             continue
         if source.is_file():
             dest = target / rel
