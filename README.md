@@ -1,14 +1,14 @@
 # RegressionIQ
 
-RegressionIQ is a regression test planning tool that analyzes code changes before any test generation happens. The idea is simple: not every Git diff needs new tests. Some commits only change comments or formatting, while others change logic, API behavior, or security-sensitive code.
+RegressionIQ is a regression test planning tool that analyzes code changes before test generation happens. The goal is to avoid generating tests for every Git diff and instead focus on changes that can actually affect behavior.
 
-The current version focuses on understanding those differences. It compares two commits, classifies the kind of change, estimates risk, traces affected code, and retrieves related test context. It does **not** generate tests yet, call an LLM, modify source code, or commit files automatically.
+Right now, the project supports Python repositories that use pytest. It compares two commits, understands the semantic change, classifies the risk, traces affected code, retrieves related test context, and can draft pytest regression tests through Gemini for human review. It does not approve, execute, repair, or commit generated tests automatically.
 
-## Why This Project?
+## Problem Statement
 
-Raw Git diff is useful, but it only shows text changes. That is not always enough to decide whether behavior changed.
+In most projects, every pull request contains a mix of changes. Some changes are important, and some are not.
 
-For example, these changes should usually not trigger new regression tests:
+For example, these changes usually do not need new regression tests:
 
 - comments
 - whitespace
@@ -16,82 +16,93 @@ For example, these changes should usually not trigger new regression tests:
 - import reordering
 - safe local variable renaming
 
-But these changes usually should trigger deeper analysis:
+But these changes can affect behavior and should be reviewed more carefully:
 
-- modified conditions
+- changed conditions
 - changed return values
-- function signature changes
-- branch additions or removals
+- changed function signatures
+- new or removed branches
 - changed function calls
-- validation rule changes
+- changed validation rules
 - API behavior changes
-- security-sensitive logic changes
+- security-sensitive changes
 
-RegressionIQ uses semantic analysis to separate noisy edits from behavior changes. After that, it traces what code may be affected and collects the test context that would be useful later.
+A normal Git diff only shows text differences. It does not tell us whether the logic of the program changed. Because of that, a test generation system based only on raw diff can easily become noisy and generate low-value tests.
 
-## Methodology
+RegressionIQ tries to solve this by looking at code structure first.
 
-RegressionIQ follows a staged analysis pipeline:
+## Goal
+
+The goal of RegressionIQ is to build the analysis layer for an AI-powered regression test generation system.
+
+Before any test is generated, the system should answer:
+
+```text
+What changed?
+Did behavior change?
+What type of change is it?
+How risky is it?
+Which functions or modules are affected?
+Which existing tests and fixtures are useful context?
+```
+
+This makes the later test generation step more focused and easier to review.
+
+## Approach
+
+RegressionIQ follows this pipeline:
 
 ```text
 Old/New Git commits
     -> changed Python files
+    -> full old/new file loading
     -> AST-based semantic parsing
     -> semantic diff signals
     -> change classification
     -> deterministic risk scoring
     -> test-generation decision
-    -> impact graph analysis
+    -> impact analysis
     -> related test/context retrieval
+    -> Gemini pytest draft generation
+    -> human review and approval
 ```
 
-This keeps the analysis explainable instead of sending a raw diff directly to a model.
+The important design choice is that the tool does not rely only on raw Git diff text. It loads the old and new versions of each changed Python file, parses them, and compares their code structure.
 
 ## Phase 1: Semantic Change Analysis
 
-Phase 1 answers:
+Phase 1 focuses on understanding whether a code change is meaningful.
 
-```text
-Did the code behavior actually change?
-If yes, what kind of change is it?
-How risky is it?
-Should future regression tests be generated?
-```
+### What Phase 1 Does
 
-### Step-By-Step
-
-1. **Compare two commits**
-
-   RegressionIQ compares an old commit and a new commit:
+1. **Compares two commits**
 
    ```bash
    git diff OLD_COMMIT NEW_COMMIT
    ```
 
-2. **Collect changed Python files**
+2. **Finds changed Python files**
 
-   It identifies added, modified, and deleted Python files while ignoring irrelevant files such as caches, virtual environments, generated files, lock files, and binary assets.
+   It detects added, modified, and deleted Python files.
 
-3. **Load full old/new file contents**
-
-   Instead of relying only on raw diff text, it loads both versions of each changed file:
+3. **Loads old and new file versions**
 
    ```bash
    git show OLD_COMMIT:path/to/file.py
    git show NEW_COMMIT:path/to/file.py
    ```
 
-4. **Parse code semantically**
+4. **Parses code using AST**
 
-   The code is parsed into AST structures so comments and formatting do not affect the semantic comparison.
+   This helps ignore comments and formatting because they do not change the parsed structure.
 
-5. **Extract semantic signals**
+5. **Extracts semantic signals**
 
    The parser extracts functions, classes, imports, function signatures, return statements, conditions, and function calls.
 
-6. **Classify the change**
+6. **Classifies the change**
 
-   Rule-based classification identifies categories such as:
+   Current classifications include:
 
    - `formatting_change`
    - `import_change`
@@ -99,60 +110,113 @@ Should future regression tests be generated?
    - `logic_change`
    - `api_change`
    - `security_change`
+   - `unknown_change`
 
-7. **Score risk deterministically**
+7. **Scores risk**
 
-   Risk scoring is rule-based and explainable. For example, API changes, condition changes, return changes, and security-sensitive paths increase the risk score.
+   Risk scoring is deterministic and rule-based. For example, API changes, condition changes, return changes, and security-sensitive paths increase the risk score.
 
-8. **Decide whether tests are needed**
+8. **Decides whether future tests are needed**
 
-   The decision engine returns whether future test generation should happen and what kind of validation is recommended.
+   Phase 1 does not generate tests. It only decides whether test generation would be useful later.
+
+### Phase 1 Example
+
+Using the sample project, the old commit allows any positive payment amount. The new commit changes `validate_payment()` so the amount must be at least `10`.
+
+Phase 1 detects this as a behavior change in `src/payments.py`:
+
+```json
+{
+  "path": "src/payments.py",
+  "status": "modified",
+  "changed_functions": [
+    "validate_payment"
+  ],
+  "classification": "logic_change",
+  "confidence": 0.86,
+  "risk_score": 83,
+  "risk_band": "high",
+  "generate_tests": true,
+  "recommended_action": "generate_unit_regression_tests",
+  "reason": "Behavior-affecting logic change detected.",
+  "evidence": [
+    "validate_payment: condition_changed, body_changed",
+    "High-risk path fragment: payment",
+    "Classification risk: logic_change",
+    "condition_changed: +10",
+    "body_changed: +8"
+  ]
+}
+```
+
+### Phase 1 Evaluation
+
+The evaluation dataset includes common edge cases:
+
+- comment-only changes
+- formatting-only changes
+- safe local variable renames
+- return value changes
+- condition changes
+- API signature changes
+- security-sensitive changes
+
+Current evaluation result:
+
+```text
+Cases: 7
+Classification accuracy: 100.0%
+Test trigger accuracy: 100.0%
+Risk band accuracy: 100.0%
+Changed function accuracy: 100.0%
+```
 
 ## Phase 2: Impact Analysis And Context Retrieval
 
 Phase 2 builds on Phase 1.
 
-Phase 1 tells us **what changed**. Phase 2 tells us **what else is affected** and **which files are useful context**.
+Phase 1 tells us what changed. Phase 2 tells us what else is affected by that change.
 
-### Step-By-Step
+For example, if `validate_payment()` changes, the tool should also identify that `checkout()` may be affected if it calls `validate_payment()`.
 
-1. **Build a repository graph**
+### What Phase 2 Adds
 
-   RegressionIQ scans Python files and builds module/function representations for the repository.
+1. **Repository graph**
 
-2. **Build a function-level call graph**
+   The tool scans Python files and builds module/function representations.
 
-   It detects function calls such as:
+2. **Function-level call graph**
+
+   It tracks function relationships such as:
 
    ```text
    checkout() -> validate_payment()
    checkout() -> create_invoice()
    ```
 
-3. **Trace downstream impact**
+3. **Downstream impact tracing**
 
-   If `validate_payment()` changes, RegressionIQ finds functions that call it, such as `checkout()`.
+   If a changed function is called by another function, the caller is marked as impacted.
 
-4. **Map source code to related tests**
+4. **Related test mapping**
 
-   It finds pytest files related to the changed or impacted code using naming conventions and code references.
+   The tool finds pytest files related to the changed or impacted code using file names and code references.
 
-5. **Retrieve repository context**
+5. **Context retrieval**
 
-   It retrieves focused snippets such as:
+   It retrieves useful context for future test generation:
 
    - changed function body
    - impacted caller function body
    - related pytest files
    - `conftest.py` fixtures
 
-6. **Return a structured impact report**
+### Phase 2 Example
 
-   The output includes changed symbols, impacted functions/modules, related tests, and context snippets.
+In the sample project, `checkout()` calls `validate_payment()`.
 
-## Example Phase 2 Result
-
-For the sample project, changing `src.payments.validate_payment` produces this impact result:
+When `src.payments.validate_payment` changes, RegressionIQ returns:
 
 ```text
 src/payments.py
@@ -168,7 +232,79 @@ src/payments.py
     - related_test: tests/test_payments.py
 ```
 
-This is the main Phase 2 behavior: the tool does not stop at the edited file. It sees that `checkout()` depends on `validate_payment()` and pulls in the checkout/payment tests as useful context.
+This is useful because future test generation should not only look at the edited file. It should also look at the code that depends on it and the tests that already cover that area.
+
+## Phase 3: Gemini Test Generation And Human Review
+
+Phase 3 turns the Phase 2 context into pytest regression test drafts.
+
+The tool sends changed functions, impacted callers, related tests, and fixtures to Gemini, then saves the generated pytest code into a review area instead of directly adding it to the main test suite.
+
+### What Phase 3 Adds
+
+1. **Gemini-backed generation**
+
+   Live generation uses `GEMINI_API_KEY` or `GOOGLE_API_KEY` and the optional Google Gen AI SDK.
+
+2. **pytest-only output**
+
+   Prompts instruct Gemini to return focused pytest code that follows the repository context.
+
+3. **Review queue**
+
+   Generated tests are stored under:
+
+   ```text
+   .regressioniq/reviews/
+   ```
+
+4. **Human approval states**
+
+   Review items can be:
+
+   - `generated`
+   - `approved`
+   - `rejected`
+   - `repair_needed`
+
+5. **Approval command**
+
+   Approved drafts are copied into:
+
+   ```text
+   tests/generated/
+   ```
+
+### Phase 3 Example
+
+```bash
+python3 -m regressioniq.main generate-tests \
+  --old OLD_COMMIT \
+  --new NEW_COMMIT \
+  --repo /path/to/repo \
+  --model gemini-2.5-flash
+```
+
+For local demos without using Gemini credits:
+
+```bash
+python3 -m regressioniq.main generate-tests \
+  --old OLD_COMMIT \
+  --new NEW_COMMIT \
+  --repo /path/to/repo \
+  --dry-run
+```
+
+Review and approve:
+
+```bash
+python3 -m regressioniq.main review-tests --repo /path/to/repo
+python3 -m regressioniq.main approve GENERATED_TEST_ID --repo /path/to/repo
+```
+
+## Example Terminal Output
+
+![RegressionIQ terminal output](docs/assets/output.jpeg)
 
 ## Current Scope
 
@@ -180,10 +316,11 @@ RegressionIQ currently supports:
 - single-repository analysis
 - AST-based semantic comparison
 - deterministic risk scoring
-- CLI and JSON reports
+- CLI and JSON output
 - graph-based impact analysis
-- repository-aware context retrieval
-- local evaluation fixtures
+- related test/context retrieval
+- Gemini-backed pytest draft generation
+- human approval workflow
 
 ## Installation
 
@@ -191,13 +328,28 @@ RegressionIQ currently supports:
 python3 -m pip install -e ".[dev]"
 ```
 
-You can also run commands directly with:
+For live Gemini generation:
+
+```bash
+python3 -m pip install -e ".[dev,llm]"
+export GEMINI_API_KEY="your-api-key"
+```
+
+You can also put the key in a `.env` file in the RegressionIQ project root or the repository being analyzed:
+
+```text
+GEMINI_API_KEY=your-api-key
+```
+
+You can also run the tool directly with:
 
 ```bash
 python3 -m regressioniq.main COMMAND
 ```
 
-## Analyze Semantic Changes
+## Commands
+
+Analyze semantic changes:
 
 ```bash
 python3 -m regressioniq.main analyze \
@@ -206,17 +358,7 @@ python3 -m regressioniq.main analyze \
   --repo /path/to/repo
 ```
 
-JSON output:
-
-```bash
-python3 -m regressioniq.main analyze \
-  --old OLD_COMMIT \
-  --new NEW_COMMIT \
-  --repo /path/to/repo \
-  --json
-```
-
-## Analyze Impact
+Analyze impact and retrieve context:
 
 ```bash
 python3 -m regressioniq.main impact \
@@ -225,37 +367,26 @@ python3 -m regressioniq.main impact \
   --repo /path/to/repo
 ```
 
-## Example Terminal Output
+Generate pytest regression drafts:
 
-![RegressionIQ terminal output](docs/assets/output.jpeg)
-
-## Machine-Readable Output
-
-RegressionIQ also supports JSON output for CI/CD and future orchestration:
-
-```json
-{
-  "path": "src/auth/tokens.py",
-  "classification": "security_change",
-  "confidence": 0.82,
-  "risk_score": 100,
-  "risk_band": "high",
-  "generate_tests": true,
-  "recommended_action": "generate_security_edge_case_tests"
-}
+```bash
+python3 -m regressioniq.main generate-tests \
+  --old OLD_COMMIT \
+  --new NEW_COMMIT \
+  --repo /path/to/repo
 ```
 
-## Evaluation
+Review generated drafts:
 
-The Phase 1 evaluation dataset covers representative semantic-diff edge cases:
+```bash
+python3 -m regressioniq.main review-tests --repo /path/to/repo
+```
 
-- comment-only changes
-- formatting-only changes
-- safe local variable renames
-- return value changes
-- condition changes
-- API signature changes
-- security-sensitive changes
+Approve a generated draft:
+
+```bash
+python3 -m regressioniq.main approve GENERATED_TEST_ID --repo /path/to/repo
+```
 
 Run evaluation:
 
@@ -263,19 +394,7 @@ Run evaluation:
 python3 -m regressioniq.main eval
 ```
 
-Current benchmark result:
-
-```text
-Cases: 7
-Classification accuracy: 100.0%
-Test trigger accuracy: 100.0%
-Risk band accuracy: 100.0%
-Changed function accuracy: 100.0%
-```
-
-Phase 2 is covered by tests that verify call graph construction, impacted function detection, related test mapping, and context retrieval.
-
-Run all tests:
+Run tests:
 
 ```bash
 python3 -m pytest
@@ -289,24 +408,38 @@ A small pytest project is included under:
 examples/sample_project/
 ```
 
-It is used to validate Phase 2 impact analysis. The sample project contains payments, checkout, invoices, related tests, and fixtures. When payment validation changes, RegressionIQ should identify checkout as impacted and retrieve both payment and checkout tests.
+It contains:
+
+- `src/payments.py`
+- `src/checkout.py`
+- `src/invoices.py`
+- `tests/test_payments.py`
+- `tests/test_checkout.py`
+- `tests/conftest.py`
+
+This sample project is used to check whether Phase 2 correctly detects downstream impact and retrieves related tests.
 
 ## Project Structure
 
 ```text
 regressioniq/
-├── git/              # Git commit/file loading
+├── git/              # Git commit and file loading
 ├── parsing/          # Python AST parsing
-├── semantic_diff/    # Semantic comparison engine
+├── semantic_diff/    # Semantic comparison
 ├── classifier/       # Change classification
 ├── risk/             # Rule-based risk scoring
 ├── decision/         # Test-generation decision logic
-├── impact/           # Phase 2 graph and impact analysis
+├── impact/           # Impact graph and dependency tracing
 ├── retrieval/        # Context retrieval
+├── generation/       # Gemini pytest generation and review storage
 ├── reporting/        # Text and JSON reports
 └── evaluation/       # Evaluation runner
 ```
 
+## Conclusion
+
+So far, RegressionIQ can identify whether a code change is meaningful, classify the type of change, estimate risk, find affected downstream functions, retrieve related tests and fixtures, and generate pytest drafts for developer review. This creates a selective test generation workflow that is easier to inspect before adoption.
+
 ## Next Steps
 
-Next, RegressionIQ will use this retrieved context to draft regression test suggestions for developer review. After that, the plan is to add test execution, repair feedback, coverage awareness, and GitHub Actions support.
+The next step is to add test execution, feedback-based repair, coverage awareness, and GitHub Actions support.

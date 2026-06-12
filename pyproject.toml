@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "regressioniq"
 version = "0.1.0"
-description = "Phase 1 semantic change analysis and regression test decision engine."
+description = "AI-powered regression impact analysis and pytest generation workflow."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -16,6 +16,9 @@ dependencies = [
 dev = [
   "pytest>=8.0",
 ]
+llm = [
+  "google-genai>=1.0",
+]
 parser = [
   "tree-sitter>=0.22",
   "tree-sitter-python>=0.21",
@@ -24,7 +27,9 @@ parser = [
 [project.scripts]
 regressioniq = "regressioniq.main:main"
 
+[tool.setuptools.packages.find]
+include = ["regressioniq*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-
